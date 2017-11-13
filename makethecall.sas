@@ -10,6 +10,7 @@ FROM="SAS - !!Ticket Management!! " #from
 HOMEDIR="/home/rthomas"
 CASES_FILE="$HOMEDIR/sas-case/cases.txt"
 CHECKLIST_FILE="$HOMEDIR/sas-case/checklist"
+ZD_USER_LIST="listusers"
 HIPCHAT_URL="https://api.hipchat.com/v2"
 ZENDESK_GROUP="36888527"
 ZENDESK_URL="https://alertlogic.zendesk.com"
@@ -220,7 +221,7 @@ function check_unassigned {
         if [[ $whodidit == "" || $whodidit == " " || $whodidit = " "  ]];then
             who="Unknown"
         else
-            who=$(grep -w "$whodidit" listusers | awk {'print $2'})
+            who=$(grep -w "$whodidit" $ZD_USER_LIST | awk {'print $2'})
         fi
         MESSAGE=$(strip_newlines "<b>Ticket Assigned to User: $who, $ticket, $lookup</b>")
         color="green"
@@ -289,9 +290,37 @@ function hyperlink_ticket {
     echo -en "$case_link"
 }
 
+function handle_moved_ticket {
+    local ticket
+    ticket=$1
+
+    print_debug "I haz moved! $ticket"
+
+    havemoved=$(grep -w "$ticket" $CASES_FILE | sed 's/^.*lelGroup //')
+    if [[ $havemoved != "$ZENDESK_GROUP" || $havemoved != ""$ZENDESK_GROUP"" ]];then
+        message=$(strip_newlines "<b>Ticket Action: $ticket - has been moved from the SAS Queue.</b>")
+
+    elif [[ $havemoved = "$ZENDESK_GROUP" || $havemoved = '$ZENDESK_GROUP' ]];then #this is a possible bug
+        message=$(strip_newlines "<b>Ticket Action: $ticket - showing as still in SAS but not in cases.txt</b>")
+        post_ticket "$ticket" "" "" "$color" "$message"
+        continue
+    else
+        message=$(strip_newlines "<b>Ticket Action: $ticket - has been solved.</b>")
+    fi
+
+    color="green"
+    checklist="y"
+    post_ticket "$ticket" "$checklist" "$count" "$color" "$message"    
+}
+
 function handle_ticket {
     local ticket
     local ticket_id
+    local lookups
+    local checkin
+    local lookup
+    local whodidit
+    local case_link
     ticket=$1
 
     lookups=$(lookup_ticket "$ticket")
@@ -307,24 +336,7 @@ function handle_ticket {
     #add to checklist or not##
     ####################
     if [[ $lookups = " " && "$ticket_id" -eq 0 ]];then
-        print_debug "I haz moved! $ticket"
-
-        havemoved=$(grep -w "$ticket" $CASES_FILE | sed 's/^.*lelGroup //')
-        if [[ $havemoved != "$ZENDESK_GROUP" || $havemoved != ""$ZENDESK_GROUP"" ]];then
-            message=$(strip_newlines "<b>Ticket Action: $ticket - has been moved from the SAS Queue.</b>")
-
-        elif [[ $havemoved = "$ZENDESK_GROUP" || $havemoved = '$ZENDESK_GROUP' ]];then #this is a possible bug
-            message=$(strip_newlines "<b>Ticket Action: $ticket - showing as still in SAS but not in cases.txt</b>")
-            post_ticket "$ticket" "" "" "$color" "$message"
-            continue
-        else
-            message=$(strip_newlines "<b>Ticket Action: $ticket - has been solved.</b>")
-        fi
-
-        color="green"
-        checklist="y"
-        post_ticket "$ticket" "$checklist" "$count" "$color" "$message"
-
+        handle_moved_ticket "$ticket"
     elif [[ "$ticket_id" -eq 0 ]];then #if no asigned found
         if [[ "$checkin" -eq 0 ]];then #and not in checklist
             havemoved=$(grep -w "$ticket" $CASES_FILE | sed 's/^.*lelGroup //')
@@ -370,7 +382,7 @@ function handle_ticket {
             if [[ $whodidit == "" || $whodidit == " " || $whodidit = " " ]];then
                 who="Unknown"
             else
-                who=$(grep -w "$whodidit" listusers | awk {'print $2'})
+                who=$(grep -w "$whodidit" $ZD_USER_LIST | awk {'print $2'})
             fi
             message=$(echo "<b>Ticket Assigned to User: $who, $ticket, $lookup</b>" | sed ':a;N;$!ba;s/\n/ /g')
             echo $message
@@ -382,7 +394,7 @@ function handle_ticket {
             if [[ $whodidit == "" || $whodidit == " " ]];then
                 who="Unknown"
             else
-                who=$(grep -w "$whodidit" listusers | awk {'print $2'})
+                who=$(grep -w "$whodidit" $ZD_USER_LIST | awk {'print $2'})
             fi
             MESSAGE=$(echo "<b>Ticket Assigned to User: $who, $ticket, $lookup</b>" | sed ':a;N;$!ba;s/\n/ /g')
             color="green"
