@@ -1,3 +1,5 @@
+#!/bin/bash
+
 ############################################################################
 ##GLOBAL VARS###
 ROOM_ID2=XXXX #Room ID for hipchat to post
