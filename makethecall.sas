@@ -2,20 +2,10 @@
 ################################################################################
 # TODO: Move these configurations to a config file and source them instead
 ##CONFIG VARS###
-ROOM_ID2=XXXX #Room ID for hipchat to post
-HC_USER="XXX" #user to notify about alerts too 
-AUTH_TOKEN="xxxxx" #my auth token
-NOTIFY="True" #notify yes
-FROM="SAS - !!Ticket Management!! " #from
-HOMEDIR="/home/rthomas"
-CASES_FILE="$HOMEDIR/sas-case/cases.txt"
-CHECKLIST_FILE="$HOMEDIR/sas-case/checklist"
-ZD_USER_LIST="listusers"
-HIPCHAT_URL="https://api.hipchat.com/v2"
-ZENDESK_GROUP="36888527"
-ZENDESK_URL="https://alertlogic.zendesk.com"
-DEBUG=0
+. ~/.config/sas.conf
+
 ################################# Global VARS ##################################
+DEBUG=0
 d=$(date)
 stime="00" #start
 etime="07" #end
@@ -40,11 +30,13 @@ function print_debug {
 }
 
 function strip_newlines {
+    # Strip newlines from string, return new string
     local mystring=$1
     echo -n "$mystring" | sed ':a;N;$!ba;s/\n/ /g'
 }
 
 function post_ticket {
+
     local ticket
     local checklist
     local count
@@ -91,7 +83,9 @@ function post {
         \"from\": \"$FROM\"\
     }" "$HIPCHAT_URL/user/$HC_USER/message?auth_token=$AUTH_TOKEN" 2>/dev/null
 }
+
 function get_group_id {
+    # Get group_id from ticket line, if no group found return 0
     local ticket
     local a
     local group_id
@@ -102,12 +96,15 @@ function get_group_id {
 }
 
 function get_assignee_name {
+    # Return assignee name from assignee id
     local assignee_id
     assignee_id=$1
     echo -n "$(grep -w "$assignee_id" $ZD_USER_LIST | awk {'print $2'})"
 }
 
 function add_to_checklist {
+    # Check if ticket is in checklist, if it is then do nothing, else add ticket
+    #   to checklist
     local ticket
     local checkinit
     ticket=$1
@@ -122,12 +119,14 @@ function add_to_checklist {
 }
 
 function lookup_ticket {
+    # Fetch ticket information from cases file
     local ticket
     ticket=$1
     grep -w "$ticket" $CASES_FILE | sed -e's/[ \t]*$//' #lookup these cases in our library
 }
 
 function is_in_check_list {
+    # Check if ticket is in the checklist
     local ticket
     ticket=$1
     local checkin
@@ -140,6 +139,7 @@ function is_in_check_list {
 }
 
 function get_ticket_id {
+    # Get ticket id from cases file
     local ticket
     local ticket_id
     ticket=$1
@@ -153,6 +153,7 @@ function get_ticket_id {
 }
 
 function get_assignee {
+    # Retrieve assignee id from cases file
     local ticket
     local whodidit
     local assignee
@@ -163,6 +164,7 @@ function get_assignee {
 }
 
 function stylized_subject {
+    # return a stylized subject line
     local ticket
     local lookup
     ticket=$1
@@ -171,6 +173,7 @@ function stylized_subject {
 }
 
 function hyperlink_ticket {
+    # Return hyperlink ticket text.
     local ticket_id
     ticket_id=$1
     $case_link=$(echo -e "<a href="$ZENDESK_URL/agent/tickets/$ticket_id">Click here for a link to the case</a></br>**Please Acknowledge!**</br>") #cre$
@@ -178,6 +181,7 @@ function hyperlink_ticket {
 }
 
 function clean_file {
+    # 
     local filename
     local tempfile
     filename=$1
@@ -201,12 +205,10 @@ function init {
             start "$@"
 
         elif [[ "$casefile" == "" || "$casefile" == " " || "$casefile" = "" ]];then
-            echo "ERROR: There was a problem, exiting."
-            exit 1
+            print_and_die 1 "ERROR: There was a problem, exiting."
 
         else
-            echo "ERROR: There was a problem, exiting."
-            exit 1
+            print_and_die 1 "ERROR: There was a problem, exiting."
 
         fi
 
@@ -249,6 +251,10 @@ function check_unassigned_loop {
     echo -e "===============================================================================\n"
     init_loop
 
+function handl_ooh_ticket {
+
+}
+
 function check_unassigned {
     local message
     local ticket
@@ -257,23 +263,28 @@ function check_unassigned {
     local color
     ticket=$1
 
-    lookups=$(grep -w "$ticket" $CASES_FILE) #check our cases.txt for the ticket
-    c2=$(grep "$ticket" $CASES_FILE | grep -v "SmolPeri" | awk '{print $1'}| sed -e 's/<[^>]*>//g')
+    lookups=$(lookup_ticket "$ticket")
+    ticket_id=$(get_ticket_id "$ticket")
+    checkin=$(is_in_check_list "$ticket")
+
+    ##case vars##
+    lookup=$(stylized_subject "$ticket") #lookup these cases in our library
+    assignee=$(get_assignee "$ticket")
+    case_link=$(hyperlink_ticket "$ticket_id") #cre$
+    group_id=$(get_group_id "$ticket")
+    assignee=$(get_assignee "$ticket")
+
     val=$(cat $HOMEDIR/sas-case/triggered/$ticket 2>&1)
 
     ##case vars##
-    lookup=$(grep -w "$ticket" $CASES_FILE | awk '!($1="")' | sed 's/SmolPeri/Unassigned/g' | sed 's/lelUser.*//') #lookup these cases in o$
-    case=$(echo -e "<a href="$ZENDESK_URL/agent/tickets/$ticket">Click here for a link to the case</a></br>**Please Acknowledge!**</br>")
-    group_id=$(grep -w "$ticket" $CASES_FILE | sed 's/^.*lelGroup //')
-    COUNTER=$(cat $HOMEDIR/sas-case/ticket-count/"$ticket" 2> /dev/null)
-    assignee=$(get_assignee "$ticket")
+    COUNTER=$(cat "$HOMEDIR/sas-case/ticket-count/$ticket" 2>/dev/null)
 
     ##if return is empty then we have moved##
     if [[ "$lookups" = "" || "$lookups" = " "  ]];then
-        if [[ $group_id = " " || $group_id = '' ]];then #if is in sas queue
+        if [[ $group_id -eq 0 ]];then #if is in sas queue
             message=$(strip_newlines "<b>Ticket: $ticket - has been solved.</b>")
 
-        elif [[ $group_id != "$ZENDESK_GROUP" || $group_id != "$ZENDESK_GROUP" ]];then #if not in sas queue
+        elif [[ $group_id -eq "$ZENDESK_GROUP" ]];then #if not in sas queue
             message=$(strip_newlines "<b>Ticket: $ticket - has been moved from the SAS Queue.</b>")
         else
             message=$(strip_newlines "<b>Ticket: $ticket - has been solved.</b>")
@@ -283,29 +294,29 @@ function check_unassigned {
         post_ticket "$ticket" "$checklist" "$count" "$color" "$message"
 
     ##if return is not empty and our unassign check is not empty then
-    elif [[ "$c2" == "" || $c2 == " " ]];then
+    elif [[ "$ticket_d" -eq 0 ]];then
         stime="00" #start
         etime="07" #end
         time=$(date +"%H:%M") #current time
         day=$(date | awk {'print $1'}) #the day
-            if [[ $time > $stime && $time < $etime ]];then #if current time is greater than the start and less than the end time then
-                echo -e "Out of hours, continuing"
-                continue
+        if [[ $time > $stime && $time < $etime ]];then #if current time is greater than the start and less than the end time then
+            echo -e "Out of hours, continuing"
+            continue
 
-            elif [[ "$day" == "Sat" || "$day" == "Sun" ]];then
-                echo -e "Out of hours, continuing"
-                continue
+        elif [[ "$day" == "Sat" || "$day" == "Sun" ]];then
+            echo -e "Out of hours, continuing"
+            continue
 
-            elif [[ "$COUNTER" == "21" || "$COUNTER" -gt "21" ]];then #180 was
-                message=$(strip_newlines "<b>Ticket Remains Unacknowledged: $ticket, $lookup $case</b>")
-                post_ticket "$ticket" "0" "$count" "red" "$message"
-                ontinue
-            else
-               COUNTER=$((COUNTER+1))
-               echo -e "Ticket:$ticket, Count:$COUNTER\n"
-               echo $COUNTER > $HOMEDIR/sas-case/ticket-count/"$ticket" 2> /dev/null
-               continue
-            fi
+        elif [[ "$COUNTER" == "21" || "$COUNTER" -gt "21" ]];then #180 was
+            message=$(strip_newlines "<b>Ticket Remains Unacknowledged: $ticket, $lookup $case</b>")
+            post_ticket "$ticket" "0" "$count" "red" "$message"
+            ontinue
+        else
+           COUNTER=$((COUNTER+1))
+           echo -e "Ticket:$ticket, Count:$COUNTER\n"
+           echo $COUNTER > "$HOMEDIR/sas-case/ticket-count/$ticket" 2> /dev/null
+           continue
+        fi
     else
         if [[ $assignee -eq 0 ]];then
             assignee_name="Unknown"
