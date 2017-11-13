@@ -95,7 +95,7 @@ val=$(cat /home/rthomas/sas-case/triggered/$ticket 2>&1)
 
 ##case vars##
 lookup=$(grep -w "$ticket" /home/rthomas/sas-case/cases.txt | awk '!($1="")' | sed 's/SmolPeri/Unassigned/g' | sed 's/lelUser.*//') #lookup these cases in o$
-case=$(echo -e "<a href="https://alertlogic.zendesk.com/agent/tickets/$ticket">Click here for a link to the case</a></br>**Please Acknowledge!**</br>")
+case=$(echo -e "<a href="https://xxxx.zendesk.com/agent/tickets/$ticket">Click here for a link to the case</a></br>**Please Acknowledge!**</br>")
 havemoved=$(grep -w "$ticket" /home/rthomas/sas-case/cases.txt | sed 's/^.*lelGroup //')
 COUNTER=$(cat /home/rthomas/sas-case/ticket-count/"$ticket" 2> /dev/null)
 whodidit=$(grep -w "$ticket" /home/rthomas/sas-case/cases.txt | sed 's/^.*lelUser //' | awk {'print $1'})
@@ -173,7 +173,7 @@ checkin=$(cat /home/rthomas/sas-case/checklist | grep -w "$ticket")
 ##case vars##
 lookup=$(grep -w "$ticket" cases.txt | awk '!($1="")' | sed 's/SmolPeri/Unassigned/g' | sed 's/lelUser.*//') #lookup these cases in our library
 whodidit=$(grep -w "$ticket" /home/rthomas/sas-case/cases.txt | sed 's/^.*lelUser //' | awk {'print $1'})
-case=$(echo -e "<a href="https://alertlogic.zendesk.com/agent/tickets/$ticket">Click here for a link to the case</a></br>**Please Acknowledge!**</br>") #cre$
+case=$(echo -e "<a href="https://xxxx.zendesk.com/agent/tickets/$ticket">Click here for a link to the case</a></br>**Please Acknowledge!**</br>") #cre$
 count=$(grep -i "SmolPeri" /home/rthomas/sas-case/cases.txt | uniq | awk '{print $1'} | sed -e 's/<[^>]*>//g' | wc -l)
 
 #add to checklist or not##
@@ -207,11 +207,11 @@ elif [[ "$c2" == "" || $c2 == " " ]];then #if no asigned found
 
                 else #but if is in our grup
                         if [[ $time > $stime && $time < $etime ]];then #if current time is greater than the start and less than the end time then
-                                curl -s https://alertlogic.zendesk.com/api/v2/tickets/$ticket.json -H "Content-Type: application/json" -d '{"ticket": {"comment": {"body": "SBOT - This ticket was escalated out of SAS working hours, which are: 8am - 6PM CST (Monday-Friday). Please keep in mind that this ticket, and any associated alarms, will not be investigated out of these hours. However, if this is an emergency, please contact the SAS Engineer on Call. ", "public": "false"}}' \-v -u USERNAME:PASSWORD -X PUT
+                                curl -s https://xxxx.zendesk.com/api/v2/tickets/$ticket.json -H "Content-Type: application/json" -d '{"ticket": {"comment": {"body": "SBOT - This ticket was escalated out of SAS working hours, which are: 8am - 6PM CST (Monday-Friday). Please keep in mind that this ticket, and any associated alarms, will not be investigated out of these hours. However, if this is an emergency, please contact the SAS Engineer on Call. ", "public": "false"}}' \-v -u USERNAME:PASSWORD -X PUT
                                 MESSAGE=$(echo "<b>New Ticket: $ticket, $lookup $case</b> - Escalated out of hours" | sed ':a;N;$!ba;s/\n/ /g')
 
                         elif [[ "$day" == "Sat" || "$day" == "Sun" ]];then
-                                curl -s https://alertlogic.zendesk.com/api/v2/tickets/$ticket.json -H "Content-Type: application/json" -d '{"ticket": {"comment": {"body": "SBOT - This ticket was escalated out of SAS working hours, which are: 8am - 6PM CST (Monday-Friday). Please keep in mind that this ticket, and any associated alarms, will not be investigated out of these hours.However, if this is an emergency, please contact the SAS Engineer on Call. ", "public": "false"}}' \-v -u USERNAME:PASSWORD -X PUT
+                                curl -s https://xxxx.zendesk.com/api/v2/tickets/$ticket.json -H "Content-Type: application/json" -d '{"ticket": {"comment": {"body": "SBOT - This ticket was escalated out of SAS working hours, which are: 8am - 6PM CST (Monday-Friday). Please keep in mind that this ticket, and any associated alarms, will not be investigated out of these hours.However, if this is an emergency, please contact the SAS Engineer on Call. ", "public": "false"}}' \-v -u USERNAME:PASSWORD -X PUT
                                 MESSAGE=$(echo "<b>New Ticket: $ticket, $lookup $case</b> - Escalated out of hours" | sed ':a;N;$!ba;s/\n/ /g')
 
                         else
