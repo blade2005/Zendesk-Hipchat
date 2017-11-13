@@ -251,7 +251,7 @@ function check_unassigned_loop {
     echo -e "===============================================================================\n"
     init_loop
 
-function handl_ooh_ticket {
+function handle_ooh_ticket {
 
 }
 
@@ -274,7 +274,7 @@ function check_unassigned {
     group_id=$(get_group_id "$ticket")
     assignee=$(get_assignee "$ticket")
 
-    val=$(cat $HOMEDIR/sas-case/triggered/$ticket 2>&1)
+    val=$(cat "$HOMEDIR/sas-case/triggered/$ticket" 2>&1)
 
     ##case vars##
     COUNTER=$(cat "$HOMEDIR/sas-case/ticket-count/$ticket" 2>/dev/null)
@@ -352,7 +352,6 @@ function handle_moved_ticket {
     checklist="y"
     post_ticket "$ticket" "$checklist" "$count" "$color" "$message"    
 }
-
 function handle_ticket {
     local ticket
     local ticket_id
@@ -385,12 +384,19 @@ function handle_ticket {
                 continue
 
             else #but if is in our grup
+                json_out_esc = '{\
+                    "ticket": {\
+                        "comment": {\
+                            "body": "SBOT - This ticket was escalated out of SAS working hours, which are: 8am - 6PM CST (Monday-Friday). Please keep in mind that this ticket, and any associated alarms, will not be investigated out of these hours. However, if this is an emergency, please contact the SAS Engineer on Call. ",\
+                            "public": "false"\
+                        }\
+                    }'
                 if [[ $time > $stime && $time < $etime ]];then #if current time is greater than the start and less than the end time then
-                    curl -s $ZENDESK_URL/api/v2/tickets/$ticket.json -H "Content-Type: application/json" -d '{"ticket": {"comment": {"body": "SBOT - This ticket was escalated out of SAS working hours, which are: 8am - 6PM CST (Monday-Friday). Please keep in mind that this ticket, and any associated alarms, will not be investigated out of these hours. However, if this is an emergency, please contact the SAS Engineer on Call. ", "public": "false"}}' \-v -u USERNAME:PASSWORD -X PUT
+                    curl -s $ZENDESK_URL/api/v2/tickets/$ticket.json -H "Content-Type: application/json" -d "$json_out_esc"  \-v -u USERNAME:PASSWORD -X PUT
                     message=$(strip_newlines "<b>New Ticket: $ticket, $lookup $case</b> - Escalated out of hours")
 
                 elif [[ "$day" == "Sat" || "$day" == "Sun" ]];then
-                    curl -s $ZENDESK_URL/api/v2/tickets/$ticket.json -H "Content-Type: application/json" -d '{"ticket": {"comment": {"body": "SBOT - This ticket was escalated out of SAS working hours, which are: 8am - 6PM CST (Monday-Friday). Please keep in mind that this ticket, and any associated alarms, will not be investigated out of these hours.However, if this is an emergency, please contact the SAS Engineer on Call. ", "public": "false"}}' \-v -u USERNAME:PASSWORD -X PUT
+                    curl -s $ZENDESK_URL/api/v2/tickets/$ticket.json -H "Content-Type: application/json" -d "$json_out_esc" \-v -u USERNAME:PASSWORD -X PUT
                     message=$(strip_newlines "<b>New Ticket: $ticket, $lookup $case</b> - Escalated out of hours")
 
                 else
