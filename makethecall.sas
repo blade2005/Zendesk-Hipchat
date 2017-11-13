@@ -91,6 +91,104 @@ function post {
         \"from\": \"$FROM\"\
     }" "$HIPCHAT_URL/user/$HC_USER/message?auth_token=$AUTH_TOKEN" 2>/dev/null
 }
+function get_group_id {
+    local ticket
+    local a
+    local group_id
+    ticket=$1
+    a="$(grep -w "$ticket" $CASES_FILE | sed 's/^.*lelGroup //')"
+    group_id=${a:=0}
+    echo -n "$group_id"
+}
+
+function get_assignee_name {
+    local assignee_id
+    assignee_id=$1
+    echo -n "$(grep -w "$assignee_id" $ZD_USER_LIST | awk {'print $2'})"
+}
+
+function add_to_checklist {
+    local ticket
+    local checkinit
+    ticket=$1
+    checkinit=$(is_in_check_list "$ticket")
+    if [[ $checkinit -eq 0 ]];then
+        echo "Ticket: $ticket has been placed into checklist"
+        echo $ticket | sed -e 's/<[^>]*>//g' >> $CHECKLIST_FILE #check which cases are flagging
+
+    elif [[ $checkinit -eq 1 ]];then
+        echo "Ticket: $ticket, already in checklist"
+    fi
+}
+
+function lookup_ticket {
+    local ticket
+    ticket=$1
+    grep -w "$ticket" $CASES_FILE | sed -e's/[ \t]*$//' #lookup these cases in our library
+}
+
+function is_in_check_list {
+    local ticket
+    ticket=$1
+    local checkin
+    checkin=$(grep -w "$ticket" $CHECKLIST_FILE)
+    if [[ "$checkin" = "" || "$checkin" = " " ]];then #and not in checklist
+        echo -n 0 # is IN checklist
+    else
+        echo -n 1 # is NOT in checklist
+    fi
+}
+
+function get_ticket_id {
+    local ticket
+    local ticket_id
+    ticket=$1
+    ticket_id=$(grep -w "$ticket" $CASES_FILE | grep -v "SmolPeri" | awk '{print $1'}| sed -e 's/<[^>]*>//g')
+
+    if [[ "$c2" == "" || $c2 == " " ]];then #if no asigned found
+        echo -n 0 # NO ticket id
+    else
+        echo -n $ticket_id # Ticket ID
+    fi
+}
+
+function get_assignee {
+    local ticket
+    local whodidit
+    local assignee
+    ticket=$1
+    whodidit=$(grep -w "$ticket" $CASES_FILE | sed 's/^.*lelUser //' | awk {'print $1'})
+    assignee=${whodidit:=0}
+    echo -n "$assignee"
+}
+
+function stylized_subject {
+    local ticket
+    local lookup
+    ticket=$1
+    lookup=$(grep -w "$ticket" cases.txt | awk '!($1="")' | sed 's/SmolPeri/Unassigned/g' | sed 's/lelUser.*//') #lookup these cases in our library
+    echo -en "$lookup"
+}
+
+function hyperlink_ticket {
+    local ticket_id
+    ticket_id=$1
+    $case_link=$(echo -e "<a href="$ZENDESK_URL/agent/tickets/$ticket_id">Click here for a link to the case</a></br>**Please Acknowledge!**</br>") #cre$
+    echo -en "$case_link"
+}
+
+function clean_file {
+    local filename
+    local tempfile
+    filename=$1
+    tempfile=$(mktemp)
+    sed "s/['\"]//g" "${filename}" | tr -cd '\11\12\40-\176' | perl -pe's/[^[:ascii:]]//g' | perl -pe's/[^[:ascii:]]//g' > ${tempfile}
+    mv ${tempfile} $filename
+}
+
+################################################################################
+################################################################################
+################################################################################
 
 function init {
     casefile=$(cat $CASES_FILE)
@@ -123,15 +221,6 @@ function init {
             init "$@"
         fi
     fi
-}
-
-function clean_file {
-    local filename
-    local tempfile
-    filename=$1
-    tempfile=$(mktemp)
-    sed "s/['\"]//g" "${filename}" | tr -cd '\11\12\40-\176' | perl -pe's/[^[:ascii:]]//g' | perl -pe's/[^[:ascii:]]//g' > ${tempfile}
-    mv ${tempfile} $filename
 }
 
 function start {
@@ -175,16 +264,16 @@ function check_unassigned {
     ##case vars##
     lookup=$(grep -w "$ticket" $CASES_FILE | awk '!($1="")' | sed 's/SmolPeri/Unassigned/g' | sed 's/lelUser.*//') #lookup these cases in o$
     case=$(echo -e "<a href="$ZENDESK_URL/agent/tickets/$ticket">Click here for a link to the case</a></br>**Please Acknowledge!**</br>")
-    havemoved=$(grep -w "$ticket" $CASES_FILE | sed 's/^.*lelGroup //')
+    group_id=$(grep -w "$ticket" $CASES_FILE | sed 's/^.*lelGroup //')
     COUNTER=$(cat $HOMEDIR/sas-case/ticket-count/"$ticket" 2> /dev/null)
-    whodidit=$(grep -w "$ticket" $CASES_FILE | sed 's/^.*lelUser //' | awk {'print $1'})
+    assignee=$(get_assignee "$ticket")
 
     ##if return is empty then we have moved##
     if [[ "$lookups" = "" || "$lookups" = " "  ]];then
-        if [[ $havemoved = " " || $havemoved = '' ]];then #if is in sas queue
+        if [[ $group_id = " " || $group_id = '' ]];then #if is in sas queue
             message=$(strip_newlines "<b>Ticket: $ticket - has been solved.</b>")
 
-        elif [[ $havemoved != "$ZENDESK_GROUP" || $havemoved != '$ZENDESK_GROUP' ]];then #if not in sas queue
+        elif [[ $group_id != "$ZENDESK_GROUP" || $group_id != "$ZENDESK_GROUP" ]];then #if not in sas queue
             message=$(strip_newlines "<b>Ticket: $ticket - has been moved from the SAS Queue.</b>")
         else
             message=$(strip_newlines "<b>Ticket: $ticket - has been solved.</b>")
@@ -218,76 +307,16 @@ function check_unassigned {
                continue
             fi
     else
-        if [[ $whodidit == "" || $whodidit == " " || $whodidit = " "  ]];then
-            who="Unknown"
+        if [[ $assignee -eq 0 ]];then
+            assignee_name="Unknown"
         else
-            who=$(grep -w "$whodidit" $ZD_USER_LIST | awk {'print $2'})
+            assignee_name=$(grep -w "$assignee" $ZD_USER_LIST | awk {'print $2'})
         fi
-        MESSAGE=$(strip_newlines "<b>Ticket Assigned to User: $who, $ticket, $lookup</b>")
+        message=$(strip_newlines "<b>Ticket Assigned to User: $assignee_name, $ticket, $lookup</b>")
         color="green"
         checklist="y"
         post_ticket "$ticket" "$checklist" "$count" "$color" "$message"
     fi
-}
-
-function add_to_checklist {
-    local ticket=$1
-    local lookups=$2
-    
-}
-
-function lookup_ticket {
-    local ticket
-    ticket=$1
-    grep -w "$ticket" $CASES_FILE | sed -e's/[ \t]*$//' #lookup these cases in our library
-}
-
-function is_in_check_list {
-    local ticket
-    ticket=$1
-    local checkin
-    checkin=$(grep -w "$ticket" $CHECKLIST_FILE)
-    if [[ "$checkin" = "" || "$checkin" = " " ]];then #and not in checklist
-        echo -n 0 # is IN checklist
-    else
-        echo -n 1 # is NOT in checklist
-    fi
-}
-
-function get_ticket_id {
-    local ticket
-    local ticket_id
-    ticket=$1
-    ticket_id=$(grep -w "$ticket" $CASES_FILE | grep -v "SmolPeri" | awk '{print $1'}| sed -e 's/<[^>]*>//g')
-
-    if [[ "$c2" == "" || $c2 == " " ]];then #if no asigned found
-        echo -n 0 # NO ticket id
-    else
-        echo -n $ticket_id # Ticket ID
-    fi
-}
-
-function assignee {
-    local ticket
-    local whodidit
-    ticket=$1
-    whodidit=$(grep -w "$ticket" $CASES_FILE | sed 's/^.*lelUser //' | awk {'print $1'})
-    echo -n "$whodidit"
-}
-
-function stylized_subject {
-    local ticket
-    local lookup
-    ticket=$1
-    lookup=$(grep -w "$ticket" cases.txt | awk '!($1="")' | sed 's/SmolPeri/Unassigned/g' | sed 's/lelUser.*//') #lookup these cases in our library
-    echo -en "$lookup"
-}
-
-function hyperlink_ticket {
-    local ticket_id
-    ticket_id=$1
-    $case_link=$(echo -e "<a href="$ZENDESK_URL/agent/tickets/$ticket_id">Click here for a link to the case</a></br>**Please Acknowledge!**</br>") #cre$
-    echo -en "$case_link"
 }
 
 function handle_moved_ticket {
@@ -296,11 +325,11 @@ function handle_moved_ticket {
 
     print_debug "I haz moved! $ticket"
 
-    havemoved=$(grep -w "$ticket" $CASES_FILE | sed 's/^.*lelGroup //')
-    if [[ $havemoved != "$ZENDESK_GROUP" || $havemoved != ""$ZENDESK_GROUP"" ]];then
+    group_id=$(grep -w "$ticket" $CASES_FILE | sed 's/^.*lelGroup //')
+    if [[ $group_id != "$ZENDESK_GROUP" || $group_id != ""$ZENDESK_GROUP"" ]];then
         message=$(strip_newlines "<b>Ticket Action: $ticket - has been moved from the SAS Queue.</b>")
 
-    elif [[ $havemoved = "$ZENDESK_GROUP" || $havemoved = '$ZENDESK_GROUP' ]];then #this is a possible bug
+    elif [[ $group_id = "$ZENDESK_GROUP" || $group_id = '$ZENDESK_GROUP' ]];then #this is a possible bug
         message=$(strip_newlines "<b>Ticket Action: $ticket - showing as still in SAS but not in cases.txt</b>")
         post_ticket "$ticket" "" "" "$color" "$message"
         continue
@@ -329,7 +358,7 @@ function handle_ticket {
 
     ##case vars##
     lookup=$(stylized_subject "$ticket") #lookup these cases in our library
-    whodidit=$(assignee "$ticket")
+    assignee=$(get_assignee "$ticket")
     case_link=$(hyperlink_ticket "$ticket_id") #cre$
     count=$(grep -i "SmolPeri" $CASES_FILE | uniq | awk '{print $1'} | sed -e 's/<[^>]*>//g' | wc -l)
 
@@ -339,8 +368,8 @@ function handle_ticket {
         handle_moved_ticket "$ticket"
     elif [[ "$ticket_id" -eq 0 ]];then #if no asigned found
         if [[ "$checkin" -eq 0 ]];then #and not in checklist
-            havemoved=$(grep -w "$ticket" $CASES_FILE | sed 's/^.*lelGroup //')
-             if [[ $havemoved != "$ZENDESK_GROUP" || $havemoved != ""$ZENDESK_GROUP"" ]];then #if not in groyp
+            group_id=$(get_group_id "$ticket")
+             if [[ $group_id -eq "$ZENDESK_GROUP" ]];then #if not in groyp
                 #ticket was created but not in our queue #continue
                 continue
 
@@ -377,42 +406,30 @@ function handle_ticket {
             continue
         fi
     else
-        checkinit=$(cat $CHECKLIST_FILE | grep -w "$ticket")
-        if [[ $checkinit = "" || $checkinit == "" || $checkinit = " " ]];then
-            if [[ $whodidit == "" || $whodidit == " " || $whodidit = " " ]];then
-                who="Unknown"
+        checkinit=$(is_in_check_list "$ticket")
+        if [[ $checkinit -eq 0]];then
+            if [[ $assignee -eq 0 ]];then
+                assignee_name="Unknown"
             else
-                who=$(grep -w "$whodidit" $ZD_USER_LIST | awk {'print $2'})
+                assignee_name=$(get_assignee_name "$assignee")
             fi
-            message=$(echo "<b>Ticket Assigned to User: $who, $ticket, $lookup</b>" | sed ':a;N;$!ba;s/\n/ /g')
-            echo $message
-            color="green"
-            checklist="y"
-            post_ticket "$ticket" "$checklist" "$count" "$color" "$message"
+            message=$(strip_newlines "<b>Ticket Assigned to User: $assignee_name, $ticket, $lookup</b>")
+            print_debug $message
+            post_ticket "$ticket" "y" "$count" "green" "$message"
 
         else
-            if [[ $whodidit == "" || $whodidit == " " ]];then
-                who="Unknown"
+            if [[ $assignee -eq 0 ]];then
+                assignee_name="Unknown"
             else
-                who=$(grep -w "$whodidit" $ZD_USER_LIST | awk {'print $2'})
+                assignee_name=$(get_assignee_name "$assignee")
             fi
-            MESSAGE=$(echo "<b>Ticket Assigned to User: $who, $ticket, $lookup</b>" | sed ':a;N;$!ba;s/\n/ /g')
-            color="green"
-            checklist="y"
-            post_ticket "$ticket" "$checklist" "$count" "$color" "$message"
+            message=$(strip_newlines "<b>Ticket Assigned to User: $assignee_name, $ticket, $lookup</b>")
+            post_ticket "$ticket" "y" "$count" "green" "$message"
         fi
 
     fi
 
-    checkinit=$(cat $CHECKLIST_FILE | grep -w "$ticket")
-    if [[ $checkinit = "" || $checkinit == "" || $checkinit = " " ]];then
-        echo "Ticket: $ticket has been placed into checklist"
-        echo $ticket | sed -e 's/<[^>]*>//g' >> $CHECKLIST_FILE #check which cases are flagging
-
-    elif [[ `cat $CHECKLIST_FILE | grep $ticket` = $ticket || `cat $CHECKLIST_FILE | grep $ticket` == $ticket  ]];then
-        echo "Ticket: $ticket, already in checklist"
-
-    fi
+    add_to_checklist "$ticket"
 }
 
 function init_loop {
@@ -424,6 +441,7 @@ function init_loop {
     done
 
 }
+
 function main {
     echo -e "++++++++++++++++++++++++++++++++++++++++++++++++"
     echo -e " SASBOT - Ticket Notification and Alert System"
