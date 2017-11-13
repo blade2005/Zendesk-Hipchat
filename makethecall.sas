@@ -1,3 +1,4 @@
+#!/bin/bash
 ################################################################################
 # TODO: Move these configurations to a config file and source them instead
 ##GLOBAL VARS###
@@ -19,7 +20,13 @@ function strip_newlines {
     echo -n "$mystring" | sed ':a;N;$!ba;s/\n/ /g'
 }
 
-function post {
+function post_ticket {
+    local ticket=$1
+    local checklist=$2
+    local count=$3
+    local color=$4
+    local message=$5
+
     if [[ $checklist == "y" || $checklist == "Y" ]];then
         sed -i 's/'$ticket'//g' $CHECKLIST_FILE
         sed -i '/^$/d' $CHECKLIST_FILE
@@ -29,12 +36,18 @@ function post {
         echo "yes" > $HOMEDIR/sas-case/triggered/$ticket
         echo "0" > $HOMEDIR/sas-case/ticket-count/$ticket
     fi
+    post "$color" "$message"
+}
+
+function post {
+    local color=$1
+    local message=$2
 
     ##to you##
     curl -s -H "Content-Type: application/json" -X POST -d "{\
         \"color\": \"$color\",\
         \"message_format\": \"html\",\
-        \"message\": \"$MESSAGE\",\
+        \"message\": \"$message\",\
         \"notify\": \"$NOTIFY\",\
         \"from\": \"$FROM\"\
     }" "$HIPCHAT_URL/room/$ROOM_ID2/notification?auth_token=$AUTH_TOKEN"
@@ -44,7 +57,7 @@ function post {
     curl -s -H "Content-Type: application/json" -X POST -d "{\
         \"color\": \"yellow\",\
         \"message_format\": \"html\",\
-        \"message\": \"$MESSAGE\",\
+        \"message\": \"$message\",\
         \"notify\": \"$NOTIFY\",\
         \"from\": \"$FROM\"\
     }" "$HIPCHAT_URL/user/$USER/message?auth_token=$AUTH_TOKEN" 2>/dev/null
@@ -135,7 +148,7 @@ function check_unassigned {
             fi
             checklist="y"
             color="green"
-            post "$color" "$checklist"
+            post_ticket "$color" "$checklist"
 
         ##if return is not empty and our unassign check is not empty then
         elif [[ "$c2" == "" || $c2 == " " ]];then
@@ -153,7 +166,7 @@ function check_unassigned {
 
                 elif [[ "$COUNTER" == "21" || "$COUNTER" -gt "21" ]];then #180 was
                     MESSAGE=$(strip_newlines "<b>Ticket Remains Unacknowledged: $ticket, $lookup $case</b>")
-                    post "red" "0"
+                    post_ticket "red" "0"
                     ontinue
                 else
                    COUNTER=$((COUNTER+1))
@@ -170,7 +183,7 @@ function check_unassigned {
             MESSAGE=$(strip_newlines "<b>Ticket Assigned to User: $who, $ticket, $lookup</b>")
             color="green"
             checklist="y"
-            post "$color" "$checklist"
+            post_ticket "$color" "$checklist"
         fi
     done <$CHECKLIST_FILE
 
@@ -206,7 +219,7 @@ function handle_ticket {
         elif [[ $havemoved = "$ZENDESK_GROUP" || $havemoved = '$ZENDESK_GROUP' ]];then #this is a possible bug
             MESSAGE=$(echo "<b>Ticket Action: $ticket - showing as still in SAS but not in cases.txt</b>" | sed ':a;N;$!ba;s/\n/ /g')
             color="yellow"
-            post "$color"
+            post_ticket "$color"
             continue
         else
             MESSAGE=$(echo "<b>Ticket Action: $ticket - has been solved.</b>" | sed ':a;N;$!ba;s/\n/ /g')
@@ -214,7 +227,7 @@ function handle_ticket {
 
         color="green"
         checklist="y"
-        post "$color" "$checklist"
+        post_ticket "$color" "$checklist"
 
     elif [[ "$c2" == "" || $c2 == " " ]];then #if no asigned found
         if [[ "$checkin" = "" || "$checkin" = " " ]];then #and not in checklist
@@ -242,14 +255,14 @@ function handle_ticket {
                     echo "count is greater than 1.."
                     sleep 30
                     color="yellow"
-                    post "$color"
+                    post_ticket "$color"
 
 
                 else
                     #just run it
                     echo "pushing case.."
                     color="yellow"
-                    post "$color"
+                    post_ticket "$color"
                 fi
             fi
         else
@@ -267,7 +280,7 @@ function handle_ticket {
             echo $MESSAGE
             color="green"
             checklist="y"
-            post "$color" "$checklist"
+            post_ticket "$color" "$checklist"
 
         else
             if [[ $whodidit == "" || $whodidit == " " ]];then
@@ -278,7 +291,7 @@ function handle_ticket {
             MESSAGE=$(echo "<b>Ticket Assigned to User: $who, $ticket, $lookup</b>" | sed ':a;N;$!ba;s/\n/ /g')
             color="green"
             checklist="y"
-            post "$color" "$checklist"
+            post_ticket "$color" "$checklist"
         fi
 
     fi
